@@ -47,18 +47,34 @@ This workflow:
 
 ## Using the Container
 
-Pull and run the container:
+### Docker Compose Setup
+
+The easiest way to run the container is with Docker Compose:
+
+1. Replace `USERNAME` in the docker-compose.yml file with your GitHub username
+2. Create your `glance.yml` configuration file in the same directory
+3. Create a `data` directory for persistence
+4. Run:
 
 ```bash
-docker pull ghcr.io/USERNAME/glance:latest
-docker run -p 8080:8080 -v /path/to/glance.yml:/app/glance.yml ghcr.io/USERNAME/glance:latest
+docker-compose up -d
 ```
 
-For a specific version:
+### Running with Docker
+
+If you prefer to run directly with Docker:
 
 ```bash
-docker pull ghcr.io/USERNAME/glance:v0.7.0-freshrss
-docker run -p 8080:8080 -v /path/to/glance.yml:/app/glance.yml ghcr.io/USERNAME/glance:v0.7.0-freshrss
+# Create a data directory
+mkdir -p ./data
+
+# Run the container
+docker run -d \
+  --name glance \
+  -p 8080:8080 \
+  -v $(pwd)/glance.yml:/app/config/glance.yml:ro \
+  -v $(pwd)/data:/app/data \
+  ghcr.io/USERNAME/glance:latest
 ```
 
 Then access Glance at http://localhost:8080
@@ -73,6 +89,8 @@ If you want to manually trigger a sync with the upstream repository:
 4. The workflow will check for new Glance releases, merge them, and trigger the release process
 
 ## Troubleshooting
+
+### FreshRSS Widget Issues
 
 If you encounter issues with the FreshRSS widget:
 
