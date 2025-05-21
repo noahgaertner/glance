@@ -1,0 +1,92 @@
+name: Sync with Upstream Glance Releases
+
+permissions:
+  contents: write
+
+on:
+  # Check for releases in the upstream Glance repository
+  schedule:
+    - cron: '0 0 * * *'  # Check daily at midnight UTC
+  
+  # Manual trigger
+  workflow_dispatch:
+
+jobs:
+  check-upstream-release:
+    runs-on: ubuntu-latest
+    outputs:
+      new_release: ${{ steps.check_release.outputs.new_release }}
+      release_tag: ${{ steps.check_release.outputs.release_tag }}
+    steps:
+      - name: Check for new upstream release
+        id: check_release
+        run: |
+          # Get the latest release from the upstream repo
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/glanceapp/glance/releases/latest)
+          LATEST_TAG=$(echo $LATEST_RELEASE | jq -r '.tag_name')
+          RELEASE_DATE=$(echo $LATEST_RELEASE | jq -r '.published_at')
+          
+          # Get our tags to avoid re-syncing the same version
+          OUR_FRESHRSS_TAG="${LATEST_TAG}-freshrss"
+          OUR_TAGS=$(curl -s https://api.github.com/repos/${{ github.repository }}/tags | jq -r '.[].name')
+          
+          echo "Latest Glance release: $LATEST_TAG on $RELEASE_DATE"
+          echo "Our tags: $OUR_TAGS"
+          
+          # Check if we already have this freshrss tag
+          if echo "$OUR_TAGS" | grep -q "$OUR_FRESHRSS_TAG"; then
+            echo "We already have this release tag"
+            echo "new_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Found new release to sync: $LATEST_TAG"
+            echo "new_release=true" >> $GITHUB_OUTPUT
+            echo "release_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          fi
+
+  sync-upstream:
+    needs: check-upstream-release
+    if: needs.check-upstream-release.outputs.new_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for merging
+
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+      
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/glanceapp/glance.git
+          git fetch upstream --tags
+      
+      - name: Merge upstream release
+        run: |
+          RELEASE_TAG="${{ needs.check-upstream-release.outputs.release_tag }}"
+          echo "Merging release tag: $RELEASE_TAG"
+          git checkout main
+          git merge $RELEASE_TAG --no-edit || {
+            echo "Merge conflict occurred, attempting to resolve..."
+            # Keep our changes for the freshrss files
+            git checkout --ours internal/glance/widget-freshrss.go
+            git add internal/glance/widget-freshrss.go
+            git checkout --ours internal/glance/widget.go
+            git add internal/glance/widget.go
+            git commit -m "Merge upstream release $RELEASE_TAG with conflict resolution"
+          }
+      
+      - name: Push changes back to repository
+        run: |
+          git push origin main
+      
+      - name: Create FreshRSS release tag
+        run: |
+          UPSTREAM_TAG="${{ needs.check-upstream-release.outputs.release_tag }}"
+          # Create only our custom tag that will trigger the release workflow
+          FRESHRSS_TAG="${UPSTREAM_TAG}-freshrss"
+          git tag $FRESHRSS_TAG
+          git push origin $FRESHRSS_TAG
+          echo "Created and pushed tag: $FRESHRSS_TAG" 

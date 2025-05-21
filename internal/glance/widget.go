@@ -51,6 +51,8 @@ func newWidget(widgetType string) (widget, error) {
 		w = &redditWidget{}
 	case "rss":
 		w = &rssWidget{}
+	case "freshrss":
+		w = &freshRSSWidget{}
 	case "monitor":
 		w = &monitorWidget{}
 	case "twitch-top-games":
